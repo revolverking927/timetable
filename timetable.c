@@ -23,10 +23,15 @@ typedef struct {
     int studentId;
 } student;
 
-void generalInfo(int *dayLength, int *sessionLength, bool *doubleSession) {
+void generalInfo(/*int *dayLength, int *dayStart[2],*/ int *sessionLength, bool *doubleSession) {
     char sessionCheck;
-    printf("How long does the school day last (hours): ");
-    scanf("%d", dayLength);
+    // printf("How long does the school day last (hours): ");
+    // scanf("%d", dayLength);
+
+    // printf("At what time does a school day begin, (Hours): ");
+    // scanf("%d/t", dayStart[0]);
+    // printf(",(Minutes): ");
+    // scanf("%d", dayStart[1]);
 
     printf("What is the maximum time per session (minutes): ");
     scanf("%d", sessionLength);
@@ -42,14 +47,17 @@ int main(void) {
     //Collecting the inputs
     int numYearGroups;
 
-    int dayLength, sessionLength;
+    int sessionLength;
+    int dayEnd[2] = (2,15);
+    int dayStart[2] = (8,05); //[Hours, Minutes]
     bool doubleSession;
-    int *_dayLength = &dayLength;
+    // int *_dayLength = &dayLength;
     int *_sessionLength = &sessionLength;
+    // int *_dayStart[2] = sizeof(&dayStart * 2);
     bool *_doubleSession = &doubleSession;
 
     //Asking for general information for the school
-    generalInfo(_dayLength, _sessionLength, _doubleSession);
+    generalInfo(/*_dayLength, _dayStart,*/ _sessionLength, _doubleSession);
 
     //Prompting for the number of year groups
     printf("How many year groups are in the school: ");
@@ -80,14 +88,16 @@ int main(void) {
             printf("What is the subject: ");
             scanf("%s", _curSub->subjectName);
 
-            printf("How many teachers teach this subject in the yeargroup: ");
+            printf("How many teachers teach this subject in the year group: ");
             scanf("%d", &_curSub->numTeachers);
 
-            printf("How many students take this subject in the yeargroup: ");
+            printf("How many students take this subject in the year group: ");
             scanf("%d", &_curSub->numStudents);
             subjectIndex++;
         }
     }
     
+
+    int dayLength = 
     return 0;
 }
