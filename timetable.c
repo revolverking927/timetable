@@ -43,33 +43,12 @@ void generalInfo(/*int *dayLength, int *dayStart[2],*/ int *sessionLength, bool 
     *doubleSession = (sessionCheck == 'Y') ? true : false;
 }
 
-int main(void) {
-    //Collecting the inputs
-    int numYearGroups;
-
-    int sessionLength;
-    int dayEnd[2] = (2,15);
-    int dayStart[2] = (8,05); //[Hours, Minutes]
-    bool doubleSession;
-    // int *_dayLength = &dayLength;
-    int *_sessionLength = &sessionLength;
-    // int *_dayStart[2] = sizeof(&dayStart * 2);
-    bool *_doubleSession = &doubleSession;
-
-    //Asking for general information for the school
-    generalInfo(/*_dayLength, _dayStart,*/ _sessionLength, _doubleSession);
-
-    //Prompting for the number of year groups
-    printf("How many year groups are in the school: ");
-    scanf("%d", &numYearGroups);
-
-    yearGroup yearGroups[numYearGroups]; //defining the amount of year groups
-
+void yearGroupInfo(int numYearGroups, yearGroup *yearGroups) {
     //Asking for the information of each year group
     for (int i = 0; i < numYearGroups; i++) {
         yearGroup *_curYg = &yearGroups[i]; //creating a pointer to the current yeargroup struct
 
-        printf("\n\tYear group %d\n", i+1);
+        // printf("\n\tYear group %d\n", i+1);
         printf("Enter the total number of students: ");
         scanf("%d", &_curYg->numStudents);
 
@@ -96,8 +75,56 @@ int main(void) {
             subjectIndex++;
         }
     }
-    
+}
 
-    int dayLength = 
+int main(void) {
+    //Collecting the inputs
+    int numYearGroups;
+
+    int sessionLength;
+    int dayEnd[2] = {2,15};
+    int dayStart[2] = {8,05}; //[Hours, Minutes]
+    bool doubleSession;
+    // int *_dayLength = &dayLength;
+    int *_sessionLength = &sessionLength;
+    // int *_dayStart[2] = sizeof(&dayStart * 2);
+    bool *_doubleSession = &doubleSession;
+
+    //Asking for general information for the school
+    generalInfo(/*_dayLength, _dayStart,*/ _sessionLength, _doubleSession);
+
+    // int numOfStudents, numOfTeachers, numOfSubjects;
+    // int *_numOfStudents = &numOfStudents;
+    // int *_numOfTeachers = &numOfTeachers;
+    // int *_numOfSubjects = &numOfSubjects;
+yearGroup* yearGroups[numYearGroups]; // array of pointers
+
+for (int i = 0; i < numYearGroups; i++) {
+    int subjCount = 10; // example
+
+    yearGroups[i] = malloc(
+        sizeof(yearGroup) + subjCount * sizeof(subject)
+    );
+
+    yearGroups[i]->totalSubjects = subjCount;
+}
+    // yearGroup (*_yearGroups)[numYearGroups] = &yearGroups;
+    
+    
+    //Convert the time to minutes since midnight
+    int startInMinutes = dayStart[0] * 60 + dayStart[1];
+    int endInMinutes = dayEnd[0] * 60 + dayEnd[1];
+    
+    //If the end time is less than the start time, then end time is on the next day
+    if (endInMinutes < startInMinutes) {
+        endInMinutes += 12 * 60; // Add 12 hours worth
+    }
+
+    int duration = endInMinutes - startInMinutes;
+
+    int hours = duration / 60;
+    int minutes = duration % 60;
+
+    printf("The length of the day is %d hours and %d minutes\n", hours, minutes);
     return 0;
 }
