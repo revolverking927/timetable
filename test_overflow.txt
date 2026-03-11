@@ -1,0 +1,22 @@
+9
+0
+AM
+3
+0
+PM
+6
+1
+Math
+1
+1
+2
+Recess
+3
+Lunch
+5
+1
+2
+Grade 10
+50
+Grade 11
+50
