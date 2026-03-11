@@ -12,5 +12,6 @@ Math
 Lunch
 3
 1
+1
 Grade 7
 35

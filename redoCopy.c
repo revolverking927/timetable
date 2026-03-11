@@ -26,9 +26,10 @@ typedef struct {
 } Teacher;
 
 typedef struct {
-    int sessionType[16]; 
-    int sessionId[16]; 
-    int teacherId[16]; 
+    int sessionType[10]; 
+    int sessionId[10]; 
+    int teacherId[10];
+    int roomId[10]; // New: track which classroom is assigned
 } Day;
 
 typedef struct {
@@ -107,7 +108,7 @@ Period *createSchedule(int startHour, int startMinute, char meridian[],
 }
 
 // Automated Timetable Generation Algorithm
-void generateTimetable(YearGroup *school, int numYearGroups, int numPeriods, Teacher *teachers, int numTeachers, Recess *recesses, int numRecess) {
+void generateTimetable(YearGroup *school, int numYearGroups, int numPeriods, Teacher *teachers, int numTeachers, Recess *recesses, int numRecess, int numRooms) {
     srand((unsigned)time(NULL));
 
     // Reset day/period trackers and apply global recesses
@@ -117,6 +118,7 @@ void generateTimetable(YearGroup *school, int numYearGroups, int numPeriods, Tea
                 school[y].week[d].sessionType[p] = 0;
                 school[y].week[d].sessionId[p] = -1;
                 school[y].week[d].teacherId[p] = -1;
+                school[y].week[d].roomId[p] = -1;
 
                 // Check for global recess
                 for (int r = 0; r < numRecess; r++) {
@@ -199,14 +201,35 @@ void generateTimetable(YearGroup *school, int numYearGroups, int numPeriods, Tea
                             }
                         }
 
+                        // Check room availability for BOTH periods
+                        int assignedRoom = -1;
                         if (assignedTeacher != -1) {
+                            for (int rm = 1; rm <= numRooms; rm++) { // 1-indexed room IDs
+                                int roomBusy = 0;
+                                for (int prevY = 0; prevY < numYearGroups; prevY++) {
+                                    if (school[prevY].week[d].roomId[p] == rm ||
+                                        school[prevY].week[d].roomId[p+1] == rm) {
+                                        roomBusy = 1;
+                                        break;
+                                    }
+                                }
+                                if (!roomBusy) {
+                                    assignedRoom = rm;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (assignedTeacher != -1 && assignedRoom != -1) {
                             school[y].week[d].sessionType[p] = TYPE_SUBJECT;
                             school[y].week[d].sessionId[p] = subjId;
                             school[y].week[d].teacherId[p] = assignedTeacher;
+                            school[y].week[d].roomId[p] = assignedRoom;
 
                             school[y].week[d].sessionType[p+1] = TYPE_SUBJECT;
                             school[y].week[d].sessionId[p+1] = subjId;
                             school[y].week[d].teacherId[p+1] = assignedTeacher;
+                            school[y].week[d].roomId[p+1] = assignedRoom;
 
                             for (int t = 0; t < numTeachers; t++) {
                                 if (teachers[t].id == assignedTeacher) {
@@ -251,6 +274,7 @@ void generateTimetable(YearGroup *school, int numYearGroups, int numPeriods, Tea
                     }
                     if (todayCount >= 2 && attempt < 5 * numPeriods - 5) continue; // Soft constraint
 
+                    // Find available teacher
                     int assignedTeacher = -1;
                     for (int t = 0; t < numTeachers; t++) {
                         if (teachers[t].subjectId == subjId && teachers[t].currentSessions < teachers[t].maxSessions) {
@@ -268,10 +292,30 @@ void generateTimetable(YearGroup *school, int numYearGroups, int numPeriods, Tea
                         }
                     }
 
+                    // Find available room
+                    int assignedRoom = -1;
                     if (assignedTeacher != -1) {
+                        for (int rm = 1; rm <= numRooms; rm++) {
+                            int roomBusy = 0;
+                            for (int prevY = 0; prevY < numYearGroups; prevY++) {
+                                if (school[prevY].week[d].roomId[p] == rm) {
+                                    roomBusy = 1;
+                                    break;
+                                }
+                            }
+                            if (!roomBusy) {
+                                assignedRoom = rm;
+                                break;
+                            }
+                        }
+                    }
+
+
+                    if (assignedTeacher != -1 && assignedRoom != -1) {
                         school[y].week[d].sessionType[p] = TYPE_SUBJECT;
                         school[y].week[d].sessionId[p] = subjId;
                         school[y].week[d].teacherId[p] = assignedTeacher;
+                        school[y].week[d].roomId[p] = assignedRoom;
 
                         for (int t = 0; t < numTeachers; t++) {
                             if (teachers[t].id == assignedTeacher) {
@@ -308,9 +352,12 @@ void displayYearGroupTimetable(Period *periodList, int numPeriods, YearGroup *yg
             if (yg->week[d].sessionType[p] == TYPE_RECESS) {
                 printf(" %-19s |", rList[yg->week[d].sessionId[p]].name);
             } else if (yg->week[d].sessionId[p] != -1) {
-                char cell[22];
+                char cell[30];
                 int tid = yg->week[d].teacherId[p];
-                if (tid != -1)
+                int rid = yg->week[d].roomId[p];
+                if (tid != -1 && rid != -1)
+                    snprintf(cell, sizeof(cell), "%s (T%d, R%d)", subjectList[yg->week[d].sessionId[p]].name, tid, rid);
+                else if (tid != -1) // Should not occur with new room logic, fallback safety
                     snprintf(cell, sizeof(cell), "%s (T%d)", subjectList[yg->week[d].sessionId[p]].name, tid);
                 else
                     snprintf(cell, sizeof(cell), "%s (No T)", subjectList[yg->week[d].sessionId[p]].name);
@@ -324,6 +371,65 @@ void displayYearGroupTimetable(Period *periodList, int numPeriods, YearGroup *yg
     printf("+-----------+");
     for (int i = 0; i < numPeriods; i++) printf("---------------------+");
     printf("\n");
+}
+
+void displaySubjectTimetables(Period *periodList, int numPeriods, YearGroup *school, int numYearGroups, Subject *subjectList, int numSubjects, Recess *recessList, int numRecesses) {
+    for (int s = 0; s < numSubjects; s++) {
+        printf("\n=== TIMETABLE FOR TEACHERS OF SUBJECT: %s ===\n", subjectList[s].name);
+        printf("+-----------+");
+        for (int i = 0; i < numPeriods; i++) printf("-----------------------------------+");
+        printf("\n|           |");
+        for (int i = 0; i < numPeriods; i++) {
+            char timeStr[50];
+            snprintf(timeStr, sizeof(timeStr), "%02d:%02d%s-%02d:%02d%s",
+                     periodList[i].startH, periodList[i].startM, periodList[i].startMeridian,
+                     periodList[i].endH,   periodList[i].endM,   periodList[i].endMeridian);
+            printf(" %-33s |", timeStr);
+        }
+
+        printf("\n+-----------+");
+        for (int i = 0; i < numPeriods; i++) printf("-----------------------------------+");
+        printf("\n");
+
+        for (int d = 0; d < 5; d++) {
+            printf("| %-9s |", DAYS[d]);
+            for (int p = 0; p < numPeriods; p++) {
+                int isRecess = 0;
+                int rId = -1;
+                for (int r = 0; r < numRecesses; r++) {
+                    if (recessList[r].indexPeriod == p) {
+                        isRecess = 1; rId = r; break;
+                    }
+                }
+
+                if (isRecess) {
+                    printf(" %-33s |", recessList[rId].name);
+                } else {
+                    char cell[150] = "";
+                    int found = 0;
+                    for (int y = 0; y < numYearGroups; y++) {
+                        if (school[y].week[d].sessionType[p] == TYPE_SUBJECT && school[y].week[d].sessionId[p] == s) {
+                            if (found > 0) strcat(cell, ", ");
+                            char temp[50];
+                            // Append T{id} (R{id}, {YearGroupName})
+                            snprintf(temp, sizeof(temp), "T%d (R%d, %s)", school[y].week[d].teacherId[p], school[y].week[d].roomId[p], school[y].name);
+                            strcat(cell, temp);
+                            found++;
+                        }
+                    }
+                    if (found > 0) {
+                        printf(" %-33.33s |", cell);
+                    } else {
+                        printf(" %-33s |", "---");
+                    }
+                }
+            }
+            printf("\n");
+        }
+        printf("+-----------+");
+        for (int i = 0; i < numPeriods; i++) printf("-----------------------------------+");
+        printf("\n");
+    }
 }
 
 int main(void) {
@@ -411,6 +517,10 @@ int main(void) {
     }
 
     int numYearGroups;
+    int numRooms;
+    printf("\n--- Facilities Configuration ---\n");
+    printf("How many classrooms are available in total? "); scanf("%d", &numRooms); clearBuffer();
+
     printf("\n--- Student Configuration ---\n");
     printf("How many Year Groups (e.g., Year 7, Year 8)? "); scanf("%d", &numYearGroups); clearBuffer();
     YearGroup *school = malloc(numYearGroups * sizeof(YearGroup));
@@ -430,11 +540,14 @@ int main(void) {
     }
 
     printf("\n--- Automating Realistic Timetable Generation ---\n");
-    generateTimetable(school, numYearGroups, numSessions, teachersList, totalTeacherCount, recessList, numRecesses);
+    generateTimetable(school, numYearGroups, numSessions, teachersList, totalTeacherCount, recessList, numRecesses, numRooms);
 
     for (int i = 0; i < numYearGroups; i++) {
         displayYearGroupTimetable(periodList, numSessions, &school[i], subjectList, recessList);
     }
+
+    printf("\n--- Automating Teacher Timetables ---\n");
+    displaySubjectTimetables(periodList, numSessions, school, numYearGroups, subjectList, numSubjects, recessList, numRecesses);
 
     // Free memory
     for (int i = 0; i < numYearGroups; i++) free(school[i].subjectSessions);
