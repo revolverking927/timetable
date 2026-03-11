@@ -1,0 +1,30 @@
+8
+0
+AM
+3
+0
+PM
+6
+4
+Math
+2
+English
+2
+Science
+2
+PE
+1
+1
+Lunch
+3
+2
+Grade 7
+8
+8
+8
+6
+Grade 8
+8
+8
+8
+6
