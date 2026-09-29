@@ -1,0 +1,24 @@
+abc
+9
+0
+AM
+2
+0
+PM
+6
+3
+Physics
+1
+Chemistry
+1
+Biology
+1
+1
+Lunch
+3
+2
+1
+Grade 12
+6
+6
+6

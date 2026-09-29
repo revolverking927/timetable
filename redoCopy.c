@@ -1,7 +1,9 @@
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
 #define TYPE_SUBJECT 1
 #define TYPE_RECESS 2
 
@@ -30,13 +32,13 @@ typedef struct {
   int sessionType[10];
   int sessionId[10];
   int teacherId[10];
-  int roomId[10]; // New: track which classroom is assigned
+  int roomId[10];
 } Day;
 
 typedef struct {
   char name[16];
   Day week[5];
-  int *subjectSessions; // Requested sessions per subject
+  int *subjectSessions;
 } YearGroup;
 
 typedef struct {
@@ -53,6 +55,88 @@ void clearBuffer(void) {
   int c;
   while ((c = getchar()) != '\n' && c != EOF)
     ;
+}
+
+// Case-insensitive string compare
+int strEqualsIgnoreCase(const char *a, const char *b) {
+  while (*a && *b) {
+    if (tolower((unsigned char)*a) != tolower((unsigned char)*b))
+      return 0;
+    a++;
+    b++;
+  }
+  return *a == *b;
+}
+
+// Read an integer with validation, retry loop, and "exit" support.
+int readInt(const char *prompt, int min, int max) {
+  char buf[64];
+  int value;
+  while (1) {
+    printf("%s", prompt);
+    if (!fgets(buf, sizeof(buf), stdin)) {
+      printf("\nInput error. Exiting.\n");
+      exit(1);
+    }
+    // Strip trailing newline
+    char *nl = strchr(buf, '\n');
+    if (nl)
+      *nl = '\0';
+
+    // Check for exit command
+    if (strEqualsIgnoreCase(buf, "exit")) {
+      printf("Exiting program. Goodbye!\n");
+      exit(0);
+    }
+
+    // Try to parse integer
+    char leftover;
+    if (sscanf(buf, "%d%c", &value, &leftover) != 1) {
+      printf("  Error: Please enter a whole number (not text). Try again.\n");
+      continue;
+    }
+    if (value < min || value > max) {
+      printf("  Error: Value must be between %d and %d. Try again.\n", min,
+             max);
+      continue;
+    }
+    return value;
+  }
+}
+
+// Read a string that must match one of the allowed options.
+void readChoice(const char *prompt, char *out, int outSize,
+                const char *options[], int numOptions) {
+  char buf[64];
+  while (1) {
+    printf("%s", prompt);
+    if (!fgets(buf, sizeof(buf), stdin)) {
+      printf("\nInput error. Exiting.\n");
+      exit(1);
+    }
+    char *nl = strchr(buf, '\n');
+    if (nl)
+      *nl = '\0';
+
+    if (strEqualsIgnoreCase(buf, "exit")) {
+      printf("Exiting program. Goodbye!\n");
+      exit(0);
+    }
+
+    for (int i = 0; i < numOptions; i++) {
+      if (strEqualsIgnoreCase(buf, options[i])) {
+        strncpy(out, options[i], outSize - 1);
+        out[outSize - 1] = '\0';
+        return;
+      }
+    }
+
+    printf("  Error: Invalid choice. Valid options: ");
+    for (int i = 0; i < numOptions; i++) {
+      printf("%s%s", options[i], (i < numOptions - 1) ? ", " : "");
+    }
+    printf(". Try again.\n");
+  }
 }
 
 Subject createSubject(int id, char n[]) {
@@ -206,11 +290,11 @@ void generateTimetable(YearGroup *school, int numYearGroups, int numPeriods,
           remainingForSubject++;
       }
 
-      if (remainingForSubject >= 2) {
-        // Pass 1 now has a probability check (e.g., 70% chance) to attempt a
-        // double block. This prevents EVERY subject from gobbling up the only
-        // valid consecutive slot (index 0,1) in constrained schedules (like 6
-        // periods with 2 breaks).
+      if (remainingForSubject >= 2 && numPeriods >= 2) {
+        // Pass 1 has a probability check (e.g., 50% chance) to attempt a double
+        // block. This prevents EVERY subject from gobbling up the only valid
+        // consecutive slot (index 0,1) in constrained schedules (like 6 periods
+        // with 2 breaks).
         if ((rand() % 100) < 50) {
           int placed = 0;
           int maxAttempts = 5 * numPeriods * 2;
@@ -405,33 +489,77 @@ void generateTimetable(YearGroup *school, int numYearGroups, int numPeriods,
   }
 }
 
+void printSeparator(int colWidth, int numPeriods) {
+  printf("+-----------+");
+  for (int i = 0; i < numPeriods; i++) {
+    for (int j = 0; j < colWidth + 2; j++)
+      printf("-");
+    printf("+");
+  }
+  printf("\n");
+}
+
 void displayYearGroupTimetable(Period *periodList, int numPeriods,
                                YearGroup *yg, Subject *subjectList,
                                Recess *rList) {
-  printf("\n=== TIMETABLE FOR YEAR GROUP: %s ===\n", yg->name);
-  printf("+-----------+");
-  for (int i = 0; i < numPeriods; i++)
-    printf("------------------------+");
-  printf("\n| %-9s |", "Time");
+  // Find the minimum column width needed
+  int colWidth = 12; // minimum: "Free session" length
   for (int i = 0; i < numPeriods; i++) {
     char timeStr[50];
     snprintf(timeStr, sizeof(timeStr), "%02d:%02d%s-%02d:%02d%s",
              periodList[i].startH, periodList[i].startM,
              periodList[i].startMeridian, periodList[i].endH,
              periodList[i].endM, periodList[i].endMeridian);
-    printf(" %-22s |", timeStr);
+    int len = (int)strlen(timeStr);
+    if (len > colWidth)
+      colWidth = len;
+  }
+  for (int d = 0; d < 5; d++) {
+    for (int p = 0; p < numPeriods; p++) {
+      char cell[50];
+      int len = 0;
+      if (yg->week[d].sessionType[p] == TYPE_RECESS) {
+        len = (int)strlen(rList[yg->week[d].sessionId[p]].name);
+      } else if (yg->week[d].sessionId[p] != -1) {
+        int tid = yg->week[d].teacherId[p];
+        int rid = yg->week[d].roomId[p];
+        if (tid != -1 && rid != -1)
+          snprintf(cell, sizeof(cell), "%s (T%d, R%d)",
+                   subjectList[yg->week[d].sessionId[p]].name, tid, rid);
+        else if (tid != -1)
+          snprintf(cell, sizeof(cell), "%s (T%d)",
+                   subjectList[yg->week[d].sessionId[p]].name, tid);
+        else
+          snprintf(cell, sizeof(cell), "%s (No T)",
+                   subjectList[yg->week[d].sessionId[p]].name);
+        len = (int)strlen(cell);
+      }
+      if (len > colWidth)
+        colWidth = len;
+    }
   }
 
-  printf("\n+-----------+");
-  for (int i = 0; i < numPeriods; i++)
-    printf("------------------------+");
+  printf("\n=== TIMETABLE FOR YEAR GROUP: %s ===\n", yg->name);
+  printSeparator(colWidth, numPeriods);
+  printf("| %-9s |", "Time");
+  for (int i = 0; i < numPeriods; i++) {
+    char timeStr[50];
+    snprintf(timeStr, sizeof(timeStr), "%02d:%02d%s-%02d:%02d%s",
+             periodList[i].startH, periodList[i].startM,
+             periodList[i].startMeridian, periodList[i].endH,
+             periodList[i].endM, periodList[i].endMeridian);
+    printf(" %-*s |", colWidth, timeStr);
+  }
+
   printf("\n");
+  printSeparator(colWidth, numPeriods);
 
   for (int d = 0; d < 5; d++) {
     printf("| %-9s |", DAYS[d]);
     for (int p = 0; p < numPeriods; p++) {
       if (yg->week[d].sessionType[p] == TYPE_RECESS) {
-        printf(" %-22.22s |", rList[yg->week[d].sessionId[p]].name);
+        printf(" %-*.*s |", colWidth, colWidth,
+               rList[yg->week[d].sessionId[p]].name);
       } else if (yg->week[d].sessionId[p] != -1) {
         char cell[50];
         int tid = yg->week[d].teacherId[p];
@@ -439,23 +567,19 @@ void displayYearGroupTimetable(Period *periodList, int numPeriods,
         if (tid != -1 && rid != -1)
           snprintf(cell, sizeof(cell), "%s (T%d, R%d)",
                    subjectList[yg->week[d].sessionId[p]].name, tid, rid);
-        else if (tid !=
-                 -1) // Should not occur with new room logic, fallback safety
+        else if (tid != -1)
           snprintf(cell, sizeof(cell), "%s (T%d)",
                    subjectList[yg->week[d].sessionId[p]].name, tid);
         else
           snprintf(cell, sizeof(cell), "%s (No T)",
                    subjectList[yg->week[d].sessionId[p]].name);
-        printf(" %-22.22s |", cell);
+        printf(" %-*.*s |", colWidth, colWidth, cell);
       } else {
-        printf(" %-22s |", "Free session");
+        printf(" %-*s |", colWidth, "Free session");
       }
     }
     printf("\n");
-    printf("+-----------+");
-    for (int i = 0; i < numPeriods; i++)
-      printf("------------------------+");
-    printf("\n");
+    printSeparator(colWidth, numPeriods);
   }
 }
 
@@ -463,26 +587,56 @@ void displaySubjectTimetables(Period *periodList, int numPeriods,
                               YearGroup *school, int numYearGroups,
                               Subject *subjectList, int numSubjects,
                               Recess *recessList, int numRecesses) {
+  // Pre-compute column width for teacher timetables
+  int colWidth = 12; // minimum
+  for (int i = 0; i < numPeriods; i++) {
+    char timeStr[50];
+    snprintf(timeStr, sizeof(timeStr), "%02d:%02d%s-%02d:%02d%s",
+             periodList[i].startH, periodList[i].startM,
+             periodList[i].startMeridian, periodList[i].endH,
+             periodList[i].endM, periodList[i].endMeridian);
+    int len = (int)strlen(timeStr);
+    if (len > colWidth)
+      colWidth = len;
+  }
+  for (int r = 0; r < numRecesses; r++) {
+    int len = (int)strlen(recessList[r].name);
+    if (len > colWidth)
+      colWidth = len;
+  }
+  for (int y = 0; y < numYearGroups; y++) {
+    for (int d = 0; d < 5; d++) {
+      for (int p = 0; p < numPeriods; p++) {
+        if (school[y].week[d].sessionType[p] == TYPE_SUBJECT &&
+            school[y].week[d].sessionId[p] != -1) {
+          char temp[50];
+          snprintf(temp, sizeof(temp), "T%d (R%d, %s)",
+                   school[y].week[d].teacherId[p], school[y].week[d].roomId[p],
+                   school[y].name);
+          int len = (int)strlen(temp);
+          if (len > colWidth)
+            colWidth = len;
+        }
+      }
+    }
+  }
+
   for (int s = 0; s < numSubjects; s++) {
     printf("\n=== TIMETABLE FOR TEACHERS OF SUBJECT: %s ===\n",
            subjectList[s].name);
-    printf("+-----------+");
-    for (int i = 0; i < numPeriods; i++)
-      printf("------------------------+");
-    printf("\n| %-9s |", "Time");
+    printSeparator(colWidth, numPeriods);
+    printf("| %-9s |", "Time");
     for (int i = 0; i < numPeriods; i++) {
       char timeStr[50];
       snprintf(timeStr, sizeof(timeStr), "%02d:%02d%s-%02d:%02d%s",
                periodList[i].startH, periodList[i].startM,
                periodList[i].startMeridian, periodList[i].endH,
                periodList[i].endM, periodList[i].endMeridian);
-      printf(" %-22s |", timeStr);
+      printf(" %-*s |", colWidth, timeStr);
     }
 
-    printf("\n+-----------+");
-    for (int i = 0; i < numPeriods; i++)
-      printf("------------------------+");
     printf("\n");
+    printSeparator(colWidth, numPeriods);
 
     for (int d = 0; d < 5; d++) {
       int maxLines = 1;
@@ -517,9 +671,9 @@ void displaySubjectTimetables(Period *periodList, int numPeriods,
 
           if (isRecess) {
             if (line == 0)
-              printf(" %-22.22s |", recessList[rId].name);
+              printf(" %-*.*s |", colWidth, colWidth, recessList[rId].name);
             else
-              printf(" %-22s |", "");
+              printf(" %-*s |", colWidth, "");
           } else {
             int currentMatch = 0;
             int printed = 0;
@@ -531,7 +685,7 @@ void displaySubjectTimetables(Period *periodList, int numPeriods,
                   snprintf(temp, sizeof(temp), "T%d (R%d, %s)",
                            school[y].week[d].teacherId[p],
                            school[y].week[d].roomId[p], school[y].name);
-                  printf(" %-22.22s |", temp);
+                  printf(" %-*.*s |", colWidth, colWidth, temp);
                   printed = 1;
                   break;
                 }
@@ -540,18 +694,15 @@ void displaySubjectTimetables(Period *periodList, int numPeriods,
             }
             if (!printed) {
               if (line == 0 && currentMatch == 0)
-                printf(" %-22s |", "---");
+                printf(" %-*s |", colWidth, "---");
               else
-                printf(" %-22s |", "");
+                printf(" %-*s |", colWidth, "");
             }
           }
         }
         printf("\n");
       }
-      printf("+-----------+");
-      for (int i = 0; i < numPeriods; i++)
-        printf("------------------------+");
-      printf("\n");
+      printSeparator(colWidth, numPeriods);
     }
   }
 }
@@ -559,55 +710,51 @@ void displaySubjectTimetables(Period *periodList, int numPeriods,
 int main(void) {
   int startHour, startMinute, endHour, endMinute, numSessions;
   char startMeridian[3], endMeridian[3];
+  const char *meridianOptions[] = {"AM", "PM"};
 
   printf("=== School Timetable Generator ===\n");
-  printf("--- Workday Schedule ---\n");
-  printf("Start time (Hour 1-12): ");
-  scanf("%d", &startHour);
-  clearBuffer();
-  printf("Start time (Minute 0-59): ");
-  scanf("%d", &startMinute);
-  clearBuffer();
-  printf("Start AM or PM: ");
-  scanf("%s", startMeridian);
-  clearBuffer();
+  printf("  (Type 'exit' at any prompt to quit)\n");
 
-  printf("\nEnd time (Hour 1-12): ");
-  scanf("%d", &endHour);
-  clearBuffer();
-  printf("End time (Minute 0-59): ");
-  scanf("%d", &endMinute);
-  clearBuffer();
-  printf("End AM or PM: ");
-  scanf("%s", endMeridian);
-  clearBuffer();
+  int startTotal, endTotal, totalMinutes, sessionLength;
 
-  printf("\nNumber of sessions per day: ");
-  scanf("%d", &numSessions);
-  clearBuffer();
+  // Loop until the user provides a valid start/end time pair
+  while (1) {
+    printf("\n--- Workday Schedule ---\n");
+    startHour = readInt("Start time (Hour 1-12): ", 1, 12);
+    startMinute = readInt("Start time (Minute 0-59): ", 0, 59);
+    readChoice("Start AM or PM: ", startMeridian, sizeof(startMeridian),
+               meridianOptions, 2);
 
-  // Convert to military minutes for calculation
-  int mStart = startHour;
-  if (strcmp(startMeridian, "PM") == 0 && startHour != 12)
-    mStart += 12;
-  if (strcmp(startMeridian, "AM") == 0 && startHour == 12)
-    mStart = 0;
-  int startTotal = mStart * 60 + startMinute;
+    endHour = readInt("\nEnd time (Hour 1-12): ", 1, 12);
+    endMinute = readInt("End time (Minute 0-59): ", 0, 59);
+    readChoice("End AM or PM: ", endMeridian, sizeof(endMeridian),
+               meridianOptions, 2);
 
-  int mEnd = endHour;
-  if (strcmp(endMeridian, "PM") == 0 && endHour != 12)
-    mEnd += 12;
-  if (strcmp(endMeridian, "AM") == 0 && endHour == 12)
-    mEnd = 0;
-  int endTotal = mEnd * 60 + endMinute;
+    // Convert to military minutes for calculation
+    int mStart = startHour;
+    if (strcmp(startMeridian, "PM") == 0 && startHour != 12)
+      mStart += 12;
+    if (strcmp(startMeridian, "AM") == 0 && startHour == 12)
+      mStart = 0;
+    startTotal = mStart * 60 + startMinute;
 
-  if (endTotal <= startTotal) {
-    printf("Error: End time must be after start time.\n");
-    return 1;
+    int mEnd = endHour;
+    if (strcmp(endMeridian, "PM") == 0 && endHour != 12)
+      mEnd += 12;
+    if (strcmp(endMeridian, "AM") == 0 && endHour == 12)
+      mEnd = 0;
+    endTotal = mEnd * 60 + endMinute;
+
+    if (endTotal > startTotal)
+      break;
+
+    printf("\n  Error: End time must be after start time. Please re-enter.\n");
   }
 
-  int totalMinutes = endTotal - startTotal;
-  int sessionLength = totalMinutes / numSessions;
+  numSessions = readInt("\nNumber of sessions per day: ", 1, 10);
+
+  totalMinutes = endTotal - startTotal;
+  sessionLength = totalMinutes / numSessions;
 
   printf("\nGenerated %d sessions of %d minutes each.\n", numSessions,
          sessionLength);
@@ -616,9 +763,7 @@ int main(void) {
 
   int numSubjects;
   printf("\n--- Course Information ---\n");
-  printf("How many different subjects are there? ");
-  scanf("%d", &numSubjects);
-  clearBuffer();
+  numSubjects = readInt("How many different subjects are there? ", 1, 50);
   Subject *subjectList = malloc(numSubjects * sizeof(Subject));
   int *teachersPerSubject = malloc(numSubjects * sizeof(int));
 
@@ -627,13 +772,25 @@ int main(void) {
     char name[16];
     printf("\nSubject ID %d Name: ", i);
     fgets(name, sizeof(name), stdin);
+
     char *newline = strchr(name, '\n');
-    if (newline)
+    if (newline) {
       *newline = '\0';
+    }
+
+    // Check for exit during name entry
+    if (strEqualsIgnoreCase(name, "exit")) {
+      printf("Exiting program. Goodbye!\n");
+      free(subjectList);
+      free(teachersPerSubject);
+      exit(0);
+    }
+
     subjectList[i] = createSubject(i, name);
-    printf("  Number of teachers assigned to '%s': ", name);
-    scanf("%d", &teachersPerSubject[i]);
-    clearBuffer();
+    char teacherPrompt[80];
+    snprintf(teacherPrompt, sizeof(teacherPrompt),
+             "  Number of teachers assigned to '%s': ", name);
+    teachersPerSubject[i] = readInt(teacherPrompt, 1, 50);
     totalTeacherCount += teachersPerSubject[i];
   }
 
@@ -648,10 +805,11 @@ int main(void) {
 
   int numRecesses;
   printf("\n--- Recess / Break configuration ---\n");
-  printf("How many daily breaks (e.g., 1 for Lunch, 2 for Recess & Lunch)? ");
-  scanf("%d", &numRecesses);
-  clearBuffer();
-  Recess *recessList = malloc(numRecesses * sizeof(Recess));
+  numRecesses = readInt(
+      "How many daily breaks (e.g., 1 for Lunch, 2 for Recess & Lunch)? ", 0,
+      10);
+  Recess *recessList =
+      malloc((numRecesses > 0 ? numRecesses : 1) * sizeof(Recess));
   for (int i = 0; i < numRecesses; i++) {
     char name[16];
     int idx;
@@ -660,9 +818,18 @@ int main(void) {
     char *newline = strchr(name, '\n');
     if (newline)
       *newline = '\0';
-    printf("Which session index (1 to %d) is %s? ", numSessions, name);
-    scanf("%d", &idx);
-    clearBuffer();
+
+    // Check for exit during name entry
+    if (strEqualsIgnoreCase(name, "exit")) {
+      printf("Exiting program. Goodbye!\n");
+      free(recessList);
+      exit(0);
+    }
+
+    char idxPrompt[80];
+    snprintf(idxPrompt, sizeof(idxPrompt),
+             "Which session index (1 to %d) is %s? ", numSessions, name);
+    idx = readInt(idxPrompt, 1, numSessions);
 
     recessList[i].id = i;
     recessList[i].indexPeriod = idx - 1; // 0-indexed internally
@@ -672,15 +839,12 @@ int main(void) {
 
   int numYearGroups;
   int numRooms;
-  printf("\n--- Facilities Configuration ---\n");
-  printf("How many classrooms are available in total? ");
-  scanf("%d", &numRooms);
-  clearBuffer();
+  printf("\n--- Room Data ---\n");
+  numRooms = readInt("How many classrooms are available in total? ", 1, 100);
 
-  printf("\n--- Student Configuration ---\n");
-  printf("How many Year Groups (e.g., Year 7, Year 8)? ");
-  scanf("%d", &numYearGroups);
-  clearBuffer();
+  printf("\n--- Student Data ---\n");
+  numYearGroups =
+      readInt("How many Year Groups (e.g., Year 7, Year 8)? ", 1, 50);
   YearGroup *school = malloc(numYearGroups * sizeof(YearGroup));
 
   for (int i = 0; i < numYearGroups; i++) {
@@ -690,16 +854,25 @@ int main(void) {
     if (newline)
       *newline = '\0';
 
+    // Check for exit during name entry
+    if (strEqualsIgnoreCase(school[i].name, "exit")) {
+      printf("Exiting program. Goodbye!\n");
+      free(school);
+      exit(0);
+    }
+
     school[i].subjectSessions = malloc((numSubjects + 1) * sizeof(int));
     printf("  Allocation for %s:\n", school[i].name);
     for (int s = 0; s < numSubjects; s++) {
-      printf("    Weekly sessions for %s (ID %d): ", subjectList[s].name, s);
-      scanf("%d", &school[i].subjectSessions[s]);
-      clearBuffer();
+      char sessPrompt[80];
+      snprintf(sessPrompt, sizeof(sessPrompt),
+               "    Weekly sessions for %s (ID %d): ", subjectList[s].name, s);
+      school[i].subjectSessions[s] = readInt(sessPrompt, 0, 25);
     }
     school[i].subjectSessions[numSubjects] = -2; // Sentinel
   }
 
+  printf("\n--- T -> Teachers\n--- R -> Rooms\n");
   printf("\n--- Automating Realistic Timetable Generation ---\n");
   generateTimetable(school, numYearGroups, numSessions, teachersList,
                     totalTeacherCount, recessList, numRecesses, numRooms);
@@ -714,8 +887,9 @@ int main(void) {
                            subjectList, numSubjects, recessList, numRecesses);
 
   // Free memory
-  for (int i = 0; i < numYearGroups; i++)
+  for (int i = 0; i < numYearGroups; i++) {
     free(school[i].subjectSessions);
+  }
   free(school);
   free(teachersList);
   free(subjectList);

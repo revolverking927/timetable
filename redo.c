@@ -197,6 +197,46 @@ Day *createWeekSchedule(int numPeriods, Subject *subjectList, int numSubjects,
     return week;
 }
 
+void displayTeacherTimeTable(Period *periodList, int numPeriods, Day *week,
+                             Subject subject, Recess *recessList, Teacher *teachersList,
+                             int numTeachers) {
+    printf("\n%s\n", subject.name);
+    printf("\n+-----------+");
+    for (int i = 0; i < numPeriods; i++) {
+           printf("---------------------+");
+    }
+
+    printf("\n|           |");
+    for (int i = 0; i < numPeriods; i++)
+        printf(" %02d:%02d %s - %02d:%02d %-2s |",
+               periodList[i].startH, periodList[i].startM, periodList[i].startMeridian,
+               periodList[i].endH,   periodList[i].endM,   periodList[i].endMeridian);
+
+    printf("\n+-----------+");
+    for (int i = 0; i < numPeriods; i++) {
+        printf("---------------------+");
+    }
+    printf("\n");
+
+    // finding the teachers of the subject
+    Teacher *subjectTeachers = malloc(numTeachers * sizeof(Teacher));
+    for (int i = 0; i < numTeachers; i++) {
+        if (teachersList[i].subjectName == subject.name) {
+            subjectTeachers[i] = teachersList[i];
+        }
+    }
+
+    for (int d = 0; d < 5; d++) {
+        printf("| %-9s |", DAYS[d]);
+        for (int p = 0; p < numPeriods; p++) {
+            if (week[d].sessionType[p] == TYPE_SUBJECT){
+                
+            }
+        }
+        printf("\n");
+    }
+}
+
 void displayStudentTimeTable(Period *periodList, int numPeriods, Day *week,
                              Subject *subjectList, Recess *recessList) {
     printf("\n+-----------+");
@@ -293,7 +333,8 @@ int main(void) {
 
     printf("\n=== Weekly Timetable ===\n");
     Day *week = createWeekSchedule(numPeriods, subjectList, numSubjects, recessList, numRecess);
-    displayStudentTimeTable(periodList, numPeriods, week, subjectList, recessList);
+    //displayStudentTimeTable(periodList, numPeriods, week, subjectList, recessList);
+    displayTeacherTimeTable(periodList, numPeriods, week, subjectList[1], recessList, teachersList, numTeachers);
 
     free(periodList); 
     free(subjectList); 
